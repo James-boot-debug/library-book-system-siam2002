@@ -25,7 +25,7 @@ if(await requireAdmin()){
   while(g.measureText(titleText).width>W-40&&size>18){size-=2;g.font=`700 ${size}px Georgia,serif`;}
   let t=titleText;while(g.measureText(t).width>W-40&&t.length>3)t=t.slice(0,-2);if(t!==titleText)t=t.trimEnd()+"…";
   g.fillText(t,W/2,66);g.font="15px Arial,sans-serif";g.fillStyle="#6b7385";g.fillText("Scan to browse the books in this section",W/2,94);
-  g.drawImage(qr,40,116,300,300);g.font="600 14px Arial,sans-serif";g.fillStyle="#9a7220";g.fillText("Library QR Finder · Siam University",W/2,456);
+  g.drawImage(qr,40,116,300,300);g.font="600 14px Arial,sans-serif";g.fillStyle="#9a7220";g.fillText("LIBRARY & ACADEMIC RESOURCES · Siam University",W/2,456);
   return c;
  }
  function renderCategories(){
