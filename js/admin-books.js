@@ -4,7 +4,7 @@ import {resolveBook} from "./floormap.js";
 import {initBookImport} from "./book-import.js";
 import {attachShelfPicker} from "./shelfpicker.js";
 if(await requireAdmin()){
- const form=$("#book-form"),panel=$("#book-form-panel"),tbody=$("#books-table");let books=[];
+ const form=$("#book-form"),panel=$("#book-form-panel"),tbody=(()=>{let el=$("#books-list");if(!el){const t=$("#books-table"),table=t&&t.closest("table");el=document.createElement("div");el.id="books-list";el.className="bk-list";if(table){table.hidden=true;table.insertAdjacentElement("afterend",el);}}return el;})();let books=[];const openIds=new Set();
  const fields=["title","author","isbn","category","total-copies","available-copies","floor","section","shelf","row-label","position-label","description","cover-url"];
  const val=id=>$("#"+id).value.trim();
  const BUCKET="book-previews";
@@ -13,8 +13,15 @@ if(await requireAdmin()){
  const picker=attachShelfPicker($("#floor"),$("#shelf")); // floor + shelf become dropdowns tied to the map
  showPreviewCurrent("");
  function clearForm(){form.reset();$("#book-id").value="";$("#total-copies").value=1;$("#available-copies").value=1;picker?.set("","");showPreviewCurrent("");$("#book-form-title").textContent="Add a book";panel.classList.add("hidden");$("#book-message").textContent="";}
- function render(){const q=$("#book-search").value.toLowerCase();const rows=books.filter(b=>[b.title,b.author,b.category].join(" ").toLowerCase().includes(q));tbody.innerHTML=rows.map(b=>`<tr><td><strong>${esc(b.title)}</strong><br><span class="muted small">${esc(b.author)}</span></td><td>${esc(locationText(b))}</td><td>${b.available_copies}/${b.total_copies}</td><td class="pv-cell">${b.preview_url?`<a class="pv-badge" href="${esc(b.preview_url)}" target="_blank" rel="noopener">📖 View</a><button class="mini-btn" data-pv-add="${b.id}">Replace</button><button class="mini-btn danger-text" data-pv-remove="${b.id}">Remove</button>`:`<button class="mini-btn pv-add" data-pv-add="${b.id}">＋ Add PDF</button>`}</td><td class="actions"><button class="mini-btn" data-edit="${b.id}">Edit</button><button class="mini-btn" data-qr="${b.id}">QR Code</button><button class="mini-btn danger-text" data-delete="${b.id}">Delete</button></td></tr>`).join("")||'<tr><td colspan="5">No books found.</td></tr>';}
- async function load(){const {data,error}=await db.from("books").select("*").order("created_at",{ascending:false});if(error){tbody.innerHTML=`<tr><td colspan="5">${esc(error.message)}</td></tr>`;return;}books=data||[];render();renderCategories();}
+ function render(){
+  const q=$("#book-search").value.toLowerCase();const rows=books.filter(b=>[b.title,b.author,b.category,b.isbn,b.id].join(" ").toLowerCase().includes(q));
+  tbody.innerHTML=rows.map(b=>{
+   const id=esc(b.id),pv=b.preview_url?`<a class="pv-badge" href="${esc(b.preview_url)}" target="_blank" rel="noopener">📖 View preview</a><button class="mini-btn" data-pv-add="${id}">Replace PDF</button><button class="mini-btn danger-text" data-pv-remove="${id}">Remove PDF</button>`:`<button class="mini-btn pv-add" data-pv-add="${id}">＋ Add preview PDF</button>`;
+   return `<details class="bk-item" data-id="${id}"${openIds.has(b.id)?" open":""}><summary><div class="bk-sum"><strong>${esc(b.title)}</strong><span class="muted small">${esc(b.author)}</span></div><div class="bk-chips"><span class="chip">${esc(b.category||"General")}</span><span class="chip">${b.available_copies}/${b.total_copies}</span>${b.preview_url?'<span class="chip ok" title="Has preview PDF">📖</span>':""}</div><span class="bk-caret" aria-hidden="true"></span></summary><div class="bk-body"><dl class="bk-dl"><div><dt>Category</dt><dd>${esc(b.category||"General")}</dd></div><div><dt>Location</dt><dd>${esc(locationText(b))}</dd></div><div><dt>Copies</dt><dd>${b.available_copies} available / ${b.total_copies} total</dd></div><div><dt>ISBN</dt><dd>${esc(b.isbn||"—")}</dd></div><div><dt>Book ID</dt><dd>${esc(String(b.id).slice(0,8).toUpperCase())}</dd></div></dl><div class="bk-actions"><button class="mini-btn edit" data-edit="${id}">✎ Edit book</button><button class="mini-btn" data-qr="${id}">QR Code</button>${pv}<button class="mini-btn danger-text" data-delete="${id}">Delete</button></div></div></details>`;
+  }).join("")||'<p class="muted">No books found.</p>';
+ }
+ tbody.addEventListener("toggle",e=>{const d=e.target;if(d.dataset&&d.dataset.id){d.open?openIds.add(d.dataset.id):openIds.delete(d.dataset.id);}},true);
+ async function load(){const {data,error}=await db.from("books").select("*").order("created_at",{ascending:false});if(error){tbody.innerHTML=`<p class="error">${esc(error.message)}</p>`;return;}books=data||[];render();renderCategories();}
  // ----- category QR codes -----
  const catList=$("#category-list");let cats=[];
  async function labelCanvas(titleText,url){
@@ -25,7 +32,7 @@ if(await requireAdmin()){
   while(g.measureText(titleText).width>W-40&&size>18){size-=2;g.font=`700 ${size}px Georgia,serif`;}
   let t=titleText;while(g.measureText(t).width>W-40&&t.length>3)t=t.slice(0,-2);if(t!==titleText)t=t.trimEnd()+"…";
   g.fillText(t,W/2,66);g.font="15px Arial,sans-serif";g.fillStyle="#6b7385";g.fillText("Scan to browse the books in this section",W/2,94);
-  g.drawImage(qr,40,116,300,300);g.font="600 14px Arial,sans-serif";g.fillStyle="#9a7220";g.fillText("LIBRARY & ACADEMIC RESOURCES · Siam University",W/2,456);
+  g.drawImage(qr,40,116,300,300);let fs=15,ft="LIBRARY & ACADEMIC RESOURCES · Siam University";g.font=`700 ${fs}px Arial,sans-serif`;while(g.measureText(ft).width>W-30&&fs>9){fs--;g.font=`700 ${fs}px Arial,sans-serif`;}g.fillStyle="#9a7220";g.fillText(ft,W/2,456);
   return c;
  }
  function renderCategories(){

@@ -1,27 +1,29 @@
-import {db,$,esc,locationText,shortId} from "./db.js";
+import {db,$,esc} from "./db.js";
 import {initShowcase} from "./hero-showcase.js";
+import {bookCardHTML,bindCardActions} from "./bookcard.js";
 let books=[];
-const PAGE=12;let shown=PAGE;   // show 12 books at a time so the announcements strip stays close
+const LIMIT=15;                       // 3 rows of 5 books; everything else is found with search / category filter
 const grid=$("#book-grid");
+$("#load-more")?.remove();            // no "show more" button any more
+const hint=document.createElement("p");hint.id="grid-hint";hint.className="grid-hint";grid.insertAdjacentElement("afterend",hint);
+
+// Mix categories so the first 15 books show a variety instead of one subject
+function variety(list){
+ const by=new Map();list.forEach(b=>{const k=b.category||"General";if(!by.has(k))by.set(k,[]);by.get(k).push(b);});
+ const lanes=[...by.values()],out=[];
+ for(let i=0;out.length<list.length;i++){let added=false;for(const l of lanes)if(l[i]){out.push(l[i]);added=true;}if(!added)break;}
+ return out;
+}
 function render(){
- const q=$("#search").value.trim().toLowerCase(), cat=$("#category-filter").value;
+ const q=$("#search").value.trim().toLowerCase(),cat=$("#category-filter").value;
  const filtered=books.filter(b=>(!cat||b.category===cat)&&[b.title,b.author,b.category,b.isbn,b.id].join(" ").toLowerCase().includes(q));
- $("#book-count").textContent=filtered.length>shown?`Showing ${shown} of ${filtered.length} books`:`${filtered.length} book${filtered.length===1?"":"s"} found`;
- const more=$("#load-more");
- grid.innerHTML=filtered.length?filtered.slice(0,shown).map(b=>`<article class="book-card"><a href="/book.html?id=${encodeURIComponent(b.id)}" class="cover">${b.cover_url?`<img src="${esc(b.cover_url)}" alt="">`:"▤"}</a><div class="book-card-body"><span class="tag">${esc(b.category||"General")}</span><h3><a href="/book.html?id=${encodeURIComponent(b.id)}">${esc(b.title)}</a></h3><p class="muted">${esc(b.author)}</p><p class="muted small">ID: ${shortId(b.id)}</p><p class="availability">${b.available_copies>0?"● Available":"● Currently unavailable"}</p><a class="text-link" href="/book.html?id=${encodeURIComponent(b.id)}">Find location →</a>${b.preview_url?`<button class="pv-card-btn" type="button" data-pv="${esc(b.id)}">📖 Preview</button>`:""}</div></article>`).join(""):`<p class="muted">No books match your search.</p>`;
- if(more){const left=filtered.length-shown;more.classList.toggle("hidden",left<=0);more.textContent=`Show ${Math.min(PAGE,Math.max(left,0))} more books (${Math.max(left,0)} left)`;}
+ const list=(q||cat?filtered:variety(filtered)).slice(0,LIMIT);
+ $("#book-count").textContent=filtered.length>LIMIT?`Showing ${LIMIT} of ${filtered.length} books`:`${filtered.length} book${filtered.length===1?"":"s"} found`;
+ grid.innerHTML=list.length?list.map(b=>bookCardHTML(b)).join(""):`<p class="muted">No books match your search.</p>`;
+ hint.textContent=filtered.length>LIMIT?`Showing ${LIMIT} of ${filtered.length} books. Use the search box or the category filter above to find the others.`:"";
 }
 const {data,error}=await db.from("books").select("*").order("title");
 if(error) grid.innerHTML=`<p class="error">Could not load books. Check your Supabase URL, key, and schema.</p>`;
-else {books=data||[];initShowcase(books);const cats=[...new Set(books.map(b=>b.category).filter(Boolean))].sort();$("#category-filter").innerHTML='<option value="">All categories</option>'+cats.map(c=>`<option>${esc(c)}</option>`).join("");render();}
-$("#search").addEventListener("input",()=>{shown=PAGE;render();});$("#category-filter").addEventListener("change",()=>{shown=PAGE;render();});
-$("#load-more")?.addEventListener("click",()=>{shown+=PAGE;render();});
-
-// "Preview" buttons on cards open the book preview viewer
-grid.addEventListener("click",async e=>{
- const btn=e.target.closest("[data-pv]");if(!btn)return;
- const b=books.find(x=>x.id===btn.dataset.pv);if(!b)return;
- const t=btn.textContent;btn.disabled=true;btn.textContent="Opening…";
- try{const {openPreview}=await import("./preview.js");await openPreview(b.preview_url,b.title,1,btn);}catch(err){window.open(b.preview_url,"_blank");}
- btn.disabled=false;btn.textContent=t;
-});
+else{books=data||[];initShowcase(books);const cats=[...new Set(books.map(b=>b.category).filter(Boolean))].sort();$("#category-filter").innerHTML='<option value="">All categories</option>'+cats.map(c=>`<option>${esc(c)}</option>`).join("");render();}
+$("#search").addEventListener("input",render);$("#category-filter").addEventListener("change",render);
+bindCardActions(grid,()=>books);
